@@ -1,6 +1,10 @@
-# ShipNow — API Backend (Pre-entrega Módulo 1)
+# ShipNow — API Backend (Pre-entregas Módulos 3)
 
-API REST de **ShipNow**, refactorizada a una arquitectura profesional por capas (**Router → Controller → Service → Repository → Model**) con configuración de entorno validada al arranque y un diccionario de constantes para roles y estados.
+API REST de **ShipNow**, construida por módulos del curso:
+
+- **Módulo 1** — arquitectura por capas (**Router → Controller → Service → Repository → Model**), configuración de entorno validada al arranque y constantes del dominio.
+- **Módulo 2** — mocking y carga de datos de prueba (`/api/mocks`).
+- **Módulo 3** — manejo profesional y centralizado de errores (errores personalizados, diccionario de errores y middleware global).
 
 Entidades: **Products**, **Users**, **Orders** y **Deliveries**.
 
@@ -28,7 +32,7 @@ El servidor queda en `http://localhost:8080` (o el `PORT` que configures). `GET 
 
 Otros comandos: `npm start` (modo normal), `npm run seed` (datos de prueba).
 
-## Variables de entorno
+## Variables de entorno (Módulo 1)
 
 El archivo `.env` **no se sube al repo** (está en `.gitignore`). `.env.example` documenta las claves necesarias.
 
@@ -68,7 +72,7 @@ NODE_ENVIRONMENTS // DEVELOPMENT, PRODUCTION, TEST
 
 Uso: `authorize([USER_ROLES.ADMIN])`, `status: PRODUCT_STATUS.AVAILABLE`. (`src/utils/constants.js` re-exporta el mismo archivo.)
 
-## Arquitectura en capas
+## Arquitectura en capas (Módulo 1)
 
 ```
 Request → Router → Controller → Service → Repository → Modelo (Mongoose) → MongoDB
@@ -78,13 +82,14 @@ Request → Router → Controller → Service → Repository → Modelo (Mongoos
 
 - **Router** (`src/routes`): solo conecta el path (y sus middlewares de acceso) con el método del controller.
 - **Controller** (`src/controllers`): único punto de entrada HTTP. Lee `req`, llama al service, arma la respuesta y devuelve el status code. **Nunca importa Mongoose, modelos ni repositories.**
-- **Service** (`src/services`): lógica de negocio y validaciones. Solo conoce repositories; nunca Mongoose ni `req`/`res`.
+- **Service** (`src/services`): lógica de negocio y validaciones. Lanza errores del dominio. Solo conoce repositories; nunca Mongoose ni `req`/`res`.
 - **Repository** (`src/repositories`): **único lugar que conoce Mongoose/MongoDB.**
 - **Model** (`src/models`): solo define el esquema.
 - **DTO** (`src/dto`): controla qué campos viajan en la respuesta.
-- **Middlewares** (`src/middlewares`): `auth` (401), `authorize` (403), `passport` y `error` (traduce errores de negocio a status HTTP).
+- **Errors** (`src/errors`): errores personalizados y diccionario de errores (ver Módulo 3).
+- **Middlewares** (`src/middlewares`): `auth`, `authorize` y `passport` (derivan sus fallos al middleware global) y `error` (único que responde errores).
 
-## Por qué separé la lógica entre Service y Repository
+## Por qué separé la lógica entre Service y Repository (Módulo 1)
 
 **Repository = cómo se guardan y se buscan los datos.** Es el único archivo que importa los modelos y decide cosas de acceso, no de negocio:
 - Qué campos se devuelven: por defecto nunca viene `password` ni `__v`. Solo el login pide el hash, con un método aparte (`findUserByEmailWithPassword`).
@@ -160,18 +165,108 @@ curl -X POST http://localhost:8080/api/products -b cookies.txt \
 curl "http://localhost:8080/api/products?sort=-price&limit=5"
 ```
 
-## Manejo de errores
+## Manejo de errores (Módulo 3)
 
-El middleware `error.middleware.js` traduce errores de negocio (`ServiceError` con un `code`) a su status HTTP. Cualquier error no controlado responde `500` genérico, sin filtrar detalles internos.
+Todos los errores esperados de la API salen con la misma estructura, desde un único lugar.
 
-| Código HTTP | Cuándo |
+```
+Service detecta el problema → lanza un error del dominio (ej. UserNotFoundError)
+Controller / middleware     → next(error)  (nunca arman una respuesta de error)
+errorHandler (middleware global) → { status, error, message } con el status HTTP del diccionario
+```
+
+### Estructura de la respuesta de error
+
+```json
+{
+  "status": "error",
+  "error": "USER_NOT_FOUND",
+  "message": "El usuario no existe"
+}
+```
+
+| Campo | Descripción |
 |---|---|
-| 400 | Datos inválidos (campos faltantes, precio o stock inválido, estado inválido) |
-| 401 | No autenticado |
-| 403 | Autenticado pero sin permisos |
-| 404 | Producto o usuario inexistente |
-| 409 | Conflicto (email ya registrado, nombre de producto repetido) |
-| 500 | Error interno no controlado |
+| `status` | Siempre `"error"` |
+| `error` | Código interno estable (ver tabla). Sirve para tests y para el frontend |
+| `message` | Mensaje claro para el cliente |
+| `details` | Solo fuera de producción: información extra para debugging (ej. el valor recibido). **Nunca se envía en `production`** |
+
+Los errores inesperados (`500`) responden siempre con un mensaje genérico; el error real solo se registra en consola del servidor.
+
+### Piezas de la capa de errores (`src/errors`)
+
+- `error-dictionary.js`: **diccionario de errores**. Define cada código con su status HTTP y su mensaje por defecto.
+- `app-error.js`: clase base `AppError` (código, status, mensaje, detalle opcional).
+- `domain-errors.js`: errores personalizados del dominio (`UserNotFoundError`, `ProductNotFoundError`, `InvalidMockAmountError`, `MockGenerationError`, etc.). Se lanzan así: `throw new UserNotFoundError()`.
+- `middlewares/error.middleware.js`: `errorHandler` (respuesta final) y `notFoundHandler` (rutas inexistentes). Además traduce errores de Express y Mongoose (JSON mal formado, claves duplicadas, errores de MongoDB) a errores conocidos.
+
+### Diccionario de errores
+
+| Código | HTTP | Cuándo |
+|---|---|---|
+| `VALIDATION_ERROR` | 400 | Datos inválidos (también errores de validación de Mongoose) |
+| `MISSING_FIELDS` | 400 | Faltan campos obligatorios |
+| `INVALID_EMAIL` / `INVALID_PASSWORD` | 400 | Email o contraseña con formato inválido |
+| `INVALID_JSON` | 400 | El body no es un JSON válido |
+| `INVALID_PRICE` / `INVALID_STOCK` | 400 | Precio o stock inválido |
+| `INVALID_PRODUCT_STATUS` | 400 | Estado de producto inexistente |
+| `INVALID_ORDER_STATUS` | 400 | Estado de pedido inexistente (reservado para los endpoints de pedidos) |
+| `INVALID_MOCK_AMOUNT` | 400 | Cantidad de mocks no numérica, decimal, negativa, mayor a 100, todas en 0 o más entregas que pedidos |
+| `INVALID_MOCK_ROLE` | 400 | Rol inválido al generar usuarios de prueba |
+| `MOCK_NO_CUSTOMERS` / `MOCK_NO_DRIVERS` | 400 | No hay clientes / repartidores para relacionar los pedidos / entregas |
+| `UNAUTHORIZED` | 401 | No autenticado |
+| `INVALID_CREDENTIALS` | 401 | Login con credenciales incorrectas |
+| `FORBIDDEN` | 403 | Sin permisos para la acción |
+| `USER_NOT_FOUND` / `PRODUCT_NOT_FOUND` / `ORDER_NOT_FOUND` | 404 | Recurso inexistente (`ORDER_NOT_FOUND` reservado para pedidos) |
+| `ROUTE_NOT_FOUND` | 404 | Ruta inexistente |
+| `EMAIL_EXISTS` / `PRODUCT_EXISTS` / `DUPLICATE_KEY` | 409 | Conflicto: dato repetido |
+| `MOCK_GENERATION_ERROR` | 500 | Falló la carga de datos de prueba en MongoDB |
+| `DATABASE_ERROR` | 500 | Error de base de datos |
+| `INTERNAL_SERVER_ERROR` | 500 | Error inesperado |
+
+### Cómo probar los errores
+
+Con el servidor corriendo (`npm run dev`), en Postman o con `curl` (el cuerpo siempre tiene la misma forma):
+
+| Caso | Petición | Respuesta esperada |
+|---|---|---|
+| Ruta inexistente | `GET /api/nada` | `404` `ROUTE_NOT_FOUND` |
+| JSON roto | `POST /api/sessions/login` con body `{malo` | `400` `INVALID_JSON` |
+| Login incorrecto | `POST /api/sessions/login` con email/contraseña falsos | `401` `INVALID_CREDENTIALS` |
+| Registro incompleto | `POST /api/sessions/register` con `{"email":"a@a.com"}` | `400` `MISSING_FIELDS` |
+| Sin sesión | `GET /api/sessions/current` | `401` `UNAUTHORIZED` |
+| Sin permisos | `POST /api/products` logueado como `user` | `403` `FORBIDDEN` |
+| Producto inexistente | `GET /api/products/abc` | `404` `PRODUCT_NOT_FOUND` |
+| Precio inválido | `POST /api/products` (admin) con `"price": -1` | `400` `INVALID_PRICE` |
+| Usuario inexistente | `GET /api/users/zzz` (admin) | `404` `USER_NOT_FOUND` |
+
+**Casos inválidos del módulo de mocks:**
+
+| Caso | Petición | Respuesta esperada |
+|---|---|---|
+| Cantidad no numérica | `GET /api/mocks/users?qty=abc` | `400` `INVALID_MOCK_AMOUNT` — `"qty" debe ser un número entero` |
+| Cantidad negativa | `GET /api/mocks/users?qty=-5` | `400` `INVALID_MOCK_AMOUNT` — `"qty" no puede ser negativo` |
+| Cantidad excesiva | `GET /api/mocks/orders?qty=1000` | `400` `INVALID_MOCK_AMOUNT` — `"qty" no puede superar 100` |
+| Rol inválido | `GET /api/mocks/users?role=admin` | `400` `INVALID_MOCK_ROLE` |
+| Todo en cero | `POST /api/mocks/generateData` con `{}` | `400` `INVALID_MOCK_AMOUNT` |
+| Valor no numérico | `POST /api/mocks/generateData` con `{"users":"muchos"}` | `400` `INVALID_MOCK_AMOUNT` |
+| Valor negativo | `POST /api/mocks/generateData` con `{"users":-1}` | `400` `INVALID_MOCK_AMOUNT` |
+| Más entregas que pedidos | `{"orders":2,"deliveries":5}` | `400` `INVALID_MOCK_AMOUNT` |
+| Entregas sin repartidores | `{"orders":3,"deliveries":1}` con la base sin repartidores | `400` `MOCK_NO_DRIVERS` (no se inserta nada) |
+| Pedidos sin clientes | `{"orders":2}` con la base sin clientes | `400` `MOCK_NO_CUSTOMERS` |
+| Falla de MongoDB al cargar | `POST /api/mocks/seed?qty=3` con MongoDB caído | `500` `MOCK_GENERATION_ERROR` |
+
+Ejemplo (`GET /api/mocks/users?qty=-5`, en desarrollo):
+
+```json
+{
+  "status": "error",
+  "error": "INVALID_MOCK_AMOUNT",
+  "message": "\"qty\" no puede ser negativo",
+  "details": "Valor recibido: -5"
+}
+```
 
 ## Mocking y carga de datos de prueba (Módulo 2)
 
@@ -238,13 +333,14 @@ Después se pueden ver las colecciones `users`, `orders` y `deliveries` en Mongo
 
 ```
 src/
-├── app.js                    # configuración de Express y montaje de routers
+├── app.js                    # configuración de Express y montaje de routers (notFound + errorHandler al final)
 ├── server.js                 # conecta a la DB y arranca el servidor
 ├── config/
 │   ├── env.config.js         # dotenv + validación (único lugar con process.env)
 │   ├── index.js              # exporta el objeto config
 │   ├── db.config.js          # abre/cierra la conexión a MongoDB
 │   └── passport.config.js    # estrategias register / login / current
+├── errors/                   # (Módulo 3) error-dictionary, app-error, domain-errors
 ├── constants/index.js        # USER_ROLES, PRODUCT_STATUS, NODE_ENVIRONMENTS (Object.freeze)
 ├── models/                   # User, Product, Order, Delivery (solo esquemas)
 ├── mocks/                    # generadores de datos falsos (users, orders, deliveries)
@@ -253,6 +349,6 @@ src/
 ├── controllers/              # solo HTTP: req → service → res
 ├── dto/                      # forma de las respuestas
 ├── routes/                   # solo conectan path con controller
-├── middlewares/              # auth, authorize, passport, error
-└── utils/                    # hash, jwt, validators, service-error, constants, seed
+├── middlewares/              # auth, authorize, passport, error (errorHandler global)
+└── utils/                    # hash, jwt, validators, constants, seed
 ```

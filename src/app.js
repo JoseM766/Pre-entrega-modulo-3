@@ -7,7 +7,7 @@ import sessionsRouter from "./routes/sessions.router.js";
 import usersRouter from "./routes/users.router.js";
 import mocksRouter from "./routes/mocks.router.js";
 import { config } from "./config/index.js";
-import { errorHandler } from "./middlewares/error.middleware.js";
+import { errorHandler, notFoundHandler } from "./middlewares/error.middleware.js";
 
 const app = express();
 
@@ -29,9 +29,7 @@ if (!config.isProduction) {
   app.use("/api/mocks", mocksRouter);
 }
 
-app.use((req, res) => {
-  res.status(404).json({ status: "error", message: "Ruta no encontrada" });
-});
+app.use(notFoundHandler);
 
 // SIEMPRE al final: Express lo reconoce como manejador de errores por tener 4 parámetros.
 app.use(errorHandler);

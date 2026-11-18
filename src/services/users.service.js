@@ -1,5 +1,5 @@
 import * as usersRepository from "../repositories/users.repository.js";
-import { ServiceError } from "../utils/service-error.js";
+import { UserNotFoundError } from "../errors/index.js";
 
 export const listUsers = async () => {
   return usersRepository.findAllUsers();
@@ -10,7 +10,7 @@ export const getUserById = async (userId) => {
   const user = await usersRepository.findUserById(userId);
 
   if (!user) {
-    throw new ServiceError("USER_NOT_FOUND", "El usuario no existe");
+    throw new UserNotFoundError();
   }
 
   return user;

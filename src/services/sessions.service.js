@@ -1,6 +1,6 @@
 import * as usersRepository from "../repositories/users.repository.js";
 import { hashPassword, comparePassword } from "../utils/hash.js";
-import { ServiceError } from "../utils/service-error.js";
+import { EmailExistsError, InvalidEmailError, InvalidPasswordError, MissingFieldsError } from "../errors/index.js";
 import { USER_ROLES } from "../constants/index.js";
 import {
   hasRequiredRegisterFields,
@@ -11,22 +11,22 @@ import {
 
 export const registerUser = async ({ first_name, last_name, email, password }) => {
   if (!hasRequiredRegisterFields({ first_name, last_name, email, password })) {
-    throw new ServiceError("MISSING_FIELDS", "Faltan campos obligatorios");
+    throw new MissingFieldsError();
   }
 
   if (!isValidEmail(email)) {
-    throw new ServiceError("INVALID_EMAIL", "El formato del email no es válido");
+    throw new InvalidEmailError();
   }
 
   if (!isValidPassword(password)) {
-    throw new ServiceError("INVALID_PASSWORD", "La contraseña debe tener al menos 8 caracteres");
+    throw new InvalidPasswordError();
   }
 
   const normalizedEmail = normalizeEmail(email);
 
   const existingUser = await usersRepository.findUserByEmail(normalizedEmail);
   if (existingUser) {
-    throw new ServiceError("EMAIL_EXISTS", "El email ya está registrado");
+    throw new EmailExistsError();
   }
 
   const hashedPassword = await hashPassword(password);

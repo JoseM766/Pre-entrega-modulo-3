@@ -1,38 +1,67 @@
-// Mapa único de todos los códigos de error de negocio de la API a su status HTTP.
-// Antes esto estaba duplicado (uno por controller); ahora vive en un solo lugar.
-export const ERROR_STATUS_MAP = {
-  // sessions
-  MISSING_FIELDS: 400,
-  INVALID_EMAIL: 400,
-  INVALID_PASSWORD: 400,
-  EMAIL_EXISTS: 409,
-  // users
-  USER_NOT_FOUND: 404,
-  // products
-  INVALID_PRICE: 400,
-  INVALID_STOCK: 400,
-  INVALID_STATUS: 400,
-  PRODUCT_EXISTS: 409,
-  PRODUCT_NOT_FOUND: 404,
-  // mocks
-  INVALID_QTY: 400,
-  INVALID_ROLE: 400,
-  NO_CUSTOMERS: 400,
-  NO_DRIVERS: 400,
-};
+import { config } from "../config/index.js";
+import {
+  AppError,
+  InvalidJsonError,
+  ValidationError,
+  DuplicateKeyError,
+  DatabaseError,
+  InternalServerError,
+  RouteNotFoundError,
+} from "../errors/index.js";
 
-// Middleware de errores de Express: se reconoce por tener 4 parámetros.
-// Cualquier controller que llame next(error) termina acá. Si el error trae
-// un `code` conocido (viene de un ServiceError armado en un service), se
-// traduce al status correspondiente; si no, es un error no controlado y
-// respondemos 500 sin filtrar detalles internos al cliente.
-export const errorHandler = (error, req, res, next) => {
-  const statusCode = ERROR_STATUS_MAP[error.code];
+// Los controllers, middlewares y services NUNCA responden errores: los lanzan o llaman next(error).
+// La respuesta de error de toda la API sale únicamente de acá.
 
-  if (statusCode) {
-    return res.status(statusCode).json({ status: "error", message: error.message });
+// Cualquier cosa que llegue (error propio, error de Express, de Mongoose o inesperado)
+// se convierte en un AppError conocido.
+const normalizeError = (error) => {
+  if (error instanceof AppError) return error;
+
+  // JSON mal formado en el body (lo detecta express.json)
+  if (error?.type === "entity.parse.failed") {
+    return new InvalidJsonError(undefined, error.message);
   }
 
-  console.error(error);
-  return res.status(500).json({ status: "error", message: "Error interno del servidor" });
+  // Errores de Mongoose / MongoDB que se escaparon de un repository
+  if (error?.code === 11000) {
+    return new DuplicateKeyError(undefined, JSON.stringify(error.keyValue ?? {}));
+  }
+  if (error?.name === "ValidationError" || error?.name === "CastError") {
+    return new ValidationError(undefined, error.message);
+  }
+  if (/^Mongo/.test(error?.name ?? "")) {
+    return new DatabaseError(undefined, error.message);
+  }
+
+  return new InternalServerError(undefined, error?.message);
+};
+
+// Ruta inexistente: se registra después de todas las rutas y antes de errorHandler.
+export const notFoundHandler = (req, res, next) => {
+  next(new RouteNotFoundError(undefined, `${req.method} ${req.originalUrl}`));
+};
+
+// Middleware de errores de Express (4 parámetros). Debe registrarse al final de app.js.
+export const errorHandler = (error, req, res, next) => {
+  if (res.headersSent) return next(error);
+
+  const appError = normalizeError(error);
+
+  // Los errores de servidor se registran completos en consola, pero nunca se le muestran al cliente.
+  if (appError.statusCode >= 500) {
+    console.error(error);
+  }
+
+  const body = {
+    status: "error",
+    error: appError.code,
+    message: appError.message,
+  };
+
+  // details (debugging) solo fuera de producción
+  if (appError.details && !config.isProduction) {
+    body.details = appError.details;
+  }
+
+  res.status(appError.statusCode).json(body);
 };

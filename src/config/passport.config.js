@@ -2,7 +2,6 @@ import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { Strategy as JwtStrategy } from "passport-jwt";
 import * as sessionsService from "../services/sessions.service.js";
-import { ServiceError } from "../utils/service-error.js";
 import { config } from "./index.js";
 
 // Extrae el JWT desde la cookie "currentUser" en vez de un header Authorization,
@@ -23,10 +22,7 @@ passport.use(
         const newUser = await sessionsService.registerUser({ first_name, last_name, email, password });
         return done(null, newUser);
       } catch (error) {
-        // Errores de negocio (email repetido, datos inválidos): no es un fallo del servidor.
-        if (error instanceof ServiceError) {
-          return done(null, false, { code: error.code, message: error.message });
-        }
+        // Los errores (de negocio o no) se derivan al middleware global de errores.
         return done(error);
       }
     }
@@ -34,7 +30,7 @@ passport.use(
 );
 
 // --- Estrategia de login ---
-// Siempre responde con el mismo mensaje genérico, sin distinguir qué falló.
+// Si las credenciales no son válidas devuelve false: el error lo arma authenticateStrategy.
 passport.use(
   "login",
   new LocalStrategy(
@@ -44,7 +40,7 @@ passport.use(
         const user = await sessionsService.authenticateUser({ email, password });
 
         if (!user) {
-          return done(null, false, { message: "Credenciales inválidas" });
+          return done(null, false);
         }
 
         return done(null, user);

@@ -1,0 +1,41 @@
+import { AppError } from "./app-error.js";
+import { ERROR_CODES } from "./error-dictionary.js";
+
+// Cada error del dominio es una clase propia: new UserNotFoundError() ya trae código, status y mensaje.
+// Opcionalmente: new InvalidMockAmountError("mensaje específico", "detalle para debugging").
+const defineError = (name, code) => {
+  const ErrorClass = class extends AppError {
+    constructor(message, details) {
+      super(code, message, details);
+    }
+  };
+  Object.defineProperty(ErrorClass, "name", { value: name });
+  return ErrorClass;
+};
+
+export const ValidationError = defineError("ValidationError", ERROR_CODES.VALIDATION_ERROR);
+export const MissingFieldsError = defineError("MissingFieldsError", ERROR_CODES.MISSING_FIELDS);
+export const InvalidEmailError = defineError("InvalidEmailError", ERROR_CODES.INVALID_EMAIL);
+export const InvalidPasswordError = defineError("InvalidPasswordError", ERROR_CODES.INVALID_PASSWORD);
+export const InvalidJsonError = defineError("InvalidJsonError", ERROR_CODES.INVALID_JSON);
+export const InvalidPriceError = defineError("InvalidPriceError", ERROR_CODES.INVALID_PRICE);
+export const InvalidStockError = defineError("InvalidStockError", ERROR_CODES.INVALID_STOCK);
+export const InvalidProductStatusError = defineError("InvalidProductStatusError", ERROR_CODES.INVALID_PRODUCT_STATUS);
+export const InvalidOrderStatusError = defineError("InvalidOrderStatusError", ERROR_CODES.INVALID_ORDER_STATUS);
+export const InvalidMockAmountError = defineError("InvalidMockAmountError", ERROR_CODES.INVALID_MOCK_AMOUNT);
+export const InvalidMockRoleError = defineError("InvalidMockRoleError", ERROR_CODES.INVALID_MOCK_ROLE);
+export const MockNoCustomersError = defineError("MockNoCustomersError", ERROR_CODES.MOCK_NO_CUSTOMERS);
+export const MockNoDriversError = defineError("MockNoDriversError", ERROR_CODES.MOCK_NO_DRIVERS);
+export const UnauthorizedError = defineError("UnauthorizedError", ERROR_CODES.UNAUTHORIZED);
+export const InvalidCredentialsError = defineError("InvalidCredentialsError", ERROR_CODES.INVALID_CREDENTIALS);
+export const ForbiddenError = defineError("ForbiddenError", ERROR_CODES.FORBIDDEN);
+export const UserNotFoundError = defineError("UserNotFoundError", ERROR_CODES.USER_NOT_FOUND);
+export const ProductNotFoundError = defineError("ProductNotFoundError", ERROR_CODES.PRODUCT_NOT_FOUND);
+export const OrderNotFoundError = defineError("OrderNotFoundError", ERROR_CODES.ORDER_NOT_FOUND);
+export const RouteNotFoundError = defineError("RouteNotFoundError", ERROR_CODES.ROUTE_NOT_FOUND);
+export const EmailExistsError = defineError("EmailExistsError", ERROR_CODES.EMAIL_EXISTS);
+export const ProductExistsError = defineError("ProductExistsError", ERROR_CODES.PRODUCT_EXISTS);
+export const DuplicateKeyError = defineError("DuplicateKeyError", ERROR_CODES.DUPLICATE_KEY);
+export const MockGenerationError = defineError("MockGenerationError", ERROR_CODES.MOCK_GENERATION_ERROR);
+export const DatabaseError = defineError("DatabaseError", ERROR_CODES.DATABASE_ERROR);
+export const InternalServerError = defineError("InternalServerError", ERROR_CODES.INTERNAL_SERVER_ERROR);

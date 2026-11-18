@@ -1,6 +1,6 @@
 import * as productsRepository from "../repositories/products.repository.js";
 import { PRODUCT_STATUS } from "../constants/index.js";
-import { ServiceError } from "../utils/service-error.js";
+import { InvalidPriceError, InvalidProductStatusError, InvalidStockError, MissingFieldsError, ProductExistsError, ProductNotFoundError } from "../errors/index.js";
 import {
   hasRequiredProductFields,
   isValidPrice,
@@ -22,7 +22,7 @@ const findProductOrFail = async (productId) => {
   const product = await productsRepository.findProductById(productId);
 
   if (!product) {
-    throw new ServiceError("PRODUCT_NOT_FOUND", "El producto no existe");
+    throw new ProductNotFoundError();
   }
 
   return product;
@@ -31,21 +31,21 @@ const findProductOrFail = async (productId) => {
 // --- Crear producto ---
 export const createProduct = async ({ name, description, category, price, stock }) => {
   if (!hasRequiredProductFields({ name, description, category })) {
-    throw new ServiceError("MISSING_FIELDS", "Faltan campos obligatorios");
+    throw new MissingFieldsError();
   }
 
   if (!isValidPrice(price)) {
-    throw new ServiceError("INVALID_PRICE", "El precio debe ser un número mayor o igual a 0");
+    throw new InvalidPriceError();
   }
 
   const finalStock = stock === undefined ? 0 : stock;
   if (!isValidStock(finalStock)) {
-    throw new ServiceError("INVALID_STOCK", "El stock debe ser un entero mayor o igual a 0");
+    throw new InvalidStockError();
   }
 
   const existingProduct = await productsRepository.findProductByName(name.trim());
   if (existingProduct) {
-    throw new ServiceError("PRODUCT_EXISTS", "Ya existe un producto con ese nombre");
+    throw new ProductExistsError();
   }
 
   return productsRepository.createProduct({
@@ -65,7 +65,7 @@ export const listProducts = async ({ status, category, page, limit, sort }) => {
   const filter = {};
 
   if (status && !Object.values(PRODUCT_STATUS).includes(status)) {
-    throw new ServiceError("INVALID_STATUS", "El estado indicado no es válido");
+    throw new InvalidProductStatusError();
   }
 
   filter.status = status || PRODUCT_STATUS.AVAILABLE;
@@ -107,12 +107,12 @@ export const updateProduct = async ({ productId, updateData }) => {
   const { status, ...safeUpdateData } = updateData;
 
   if (safeUpdateData.price !== undefined && !isValidPrice(safeUpdateData.price)) {
-    throw new ServiceError("INVALID_PRICE", "El precio debe ser un número mayor o igual a 0");
+    throw new InvalidPriceError();
   }
 
   if (safeUpdateData.stock !== undefined) {
     if (!isValidStock(safeUpdateData.stock)) {
-      throw new ServiceError("INVALID_STOCK", "El stock debe ser un entero mayor o igual a 0");
+      throw new InvalidStockError();
     }
     safeUpdateData.status = statusFromStock(safeUpdateData.stock);
   }

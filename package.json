@@ -1,7 +1,7 @@
 {
   "name": "shipnow",
   "version": "1.0.0",
-  "description": "API REST ShipNow - Pre-entrega Módulo 1: arquitectura por capas y configuración de entorno (Backend III)",
+  "description": "API REST ShipNow - Backend III - capas, mocking y manejo de errores",
   "type": "module",
   "main": "src/server.js",
   "scripts": {
